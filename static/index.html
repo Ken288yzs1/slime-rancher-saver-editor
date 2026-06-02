@@ -78,8 +78,9 @@
   </div>
 
   <div class="card">
-    <h2>🔬 史莱姆单只管理 <button class="gray sm" onclick="loadEntities()">🔄刷新</button></h2>
-    <div class="muted">按种类折叠（默认收起），点击展开后可单独转换每一只。仅★可转换种类可改，其余只读。</div>
+    <h2>🔬 单只实体管理 <button class="gray sm" onclick="loadEntities()">🔄刷新</button></h2>
+    <div class="muted">按种类折叠（默认收起），展开后<b>每只都可改成任意物品（无限制）</b>，例如把普通生物改成钥匙。
+      ★=史莱姆（互转安全）；其他跨类修改有风险，请先备份。</div>
     <div id="entityAcc" style="margin-top:10px;"></div>
   </div>
 
@@ -225,7 +226,7 @@ async function doConvert(){
   await loadEntities();
 }
 
-/* ---------- 单只管理 (折叠/展开) ---------- */
+/* ---------- 单只管理 (折叠/展开, 无限制修改) ---------- */
 function renderEntities(ents){
   const box=document.getElementById("entityAcc"); box.innerHTML="";
   const groups={};
@@ -236,7 +237,7 @@ function renderEntities(ents){
     const open=openGroups.has(id);
     const head=document.createElement("div"); head.className="acc-head";
     head.innerHTML=`<span>${open?"▼":"▶"} <b>${name}</b> ×${list.length}`+
-      `${conv?" <span style='color:#e67e22'>★可转换</span>":" <span class='muted'>(只读)</span>"}</span>`;
+      `${conv?" <span style='color:#e67e22'>★史莱姆</span>":""}</span>`;
     head.onclick=()=>{ if(openGroups.has(id))openGroups.delete(id); else openGroups.add(id); renderEntities(ents); };
     box.appendChild(head);
     if(open){
@@ -244,14 +245,11 @@ function renderEntities(ents){
       list.forEach((e,i)=>{
         const r=document.createElement("div"); r.className="ent-row";
         const hex="0x"+e.addr.toString(16).toUpperCase();
-        if(e.convertible){
-          r.innerHTML=`<span>#${i+1} <span class="muted">@${hex}</span></span>`+
-            `<span><select class="entSel">${CONV_OPTS}</select> <button class="sm danger">转换</button></span>`;
-          const sel=r.querySelector("select"); sel.value=e.itemId;
-          r.querySelector("button").onclick=()=>doEntityConvert(e.addr,sel.value);
-        }else{
-          r.innerHTML=`<span>#${i+1} <span class="muted">@${hex}（只读）</span></span>`;
-        }
+        r.innerHTML=`<span>#${i+1} <span class="muted">@${hex}</span></span>`+
+          `<span><select class="entSel">${ALLITEMS_OPTS}</select> <button class="sm danger">修改</button></span>`;
+        const sel=r.querySelector("select"); sel.value=e.itemId;
+        r.querySelector("button").onclick=()=>
+          doEntityConvert(e.addr,e.itemId,Number(sel.value),sel.options[sel.selectedIndex].text);
         body.appendChild(r);
       });
       box.appendChild(body);
@@ -263,10 +261,16 @@ async function loadEntities(){
   if(!j.ok){ log(j.msg,"err"); return; }
   renderEntities(j.entities);
 }
-async function doEntityConvert(addr,toId){
+async function doEntityConvert(addr,fromId,toId,toName){
+  if(toId===fromId){ alert("种类未变化"); return; }
+  const safe = CONV.some(c=>c.itemId===fromId) && CONV.some(c=>c.itemId===toId);
+  if(!safe){
+    if(!confirm(`⚠️ 无限制修改\n把该实体改为【${toName}】。\n`+
+      `非「史莱姆↔史莱姆」的修改可能导致行为异常或读档问题，强烈建议先备份存档。\n确定继续？`)) return;
+  }
   const j=await api("/api/edit/entitytype",{method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({fileId:FID,addr:addr,toId:Number(toId)})});
+    body:JSON.stringify({fileId:FID,addr:addr,toId:toId})});
   if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
   log(`${j.msg} @0x${addr.toString(16).toUpperCase()}`,"ok");
   if(j.entities) renderEntities(j.entities);
