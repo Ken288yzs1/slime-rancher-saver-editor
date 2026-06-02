@@ -55,6 +55,12 @@ def api_slimes(fid):
     if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
     return jsonify({"ok":True,"slimes":core.list_slimes(d)})
 
+@app.route("/api/entities/<fid>")
+def api_entities(fid):
+    d=get_data(fid)
+    if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
+    return jsonify({"ok":True,"entities":core.list_entities(d)})
+
 @app.route("/api/market/<fid>")
 def api_market(fid):
     d=get_data(fid)
@@ -66,11 +72,23 @@ def api_market(fid):
 def api_convertible():
     return jsonify({"ok":True,"list":core.convertible_list()})
 
+@app.route("/api/allitems")
+def api_allitems():
+    return jsonify({"ok":True,"list":core.all_items_list()})
+
 @app.route("/api/edit/item", methods=["POST"])
 def edit_item():
     j=request.get_json(force=True); d=get_data(j.get("fileId"))
     if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
     res=core.edit_item_count(d,int(j["addr"]),int(j["count"]))
+    res["items"]=core.list_items(d)
+    return jsonify(res)
+
+@app.route("/api/edit/itemtype", methods=["POST"])
+def edit_itemtype():
+    j=request.get_json(force=True); d=get_data(j.get("fileId"))
+    if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
+    res=core.edit_item_type(d,int(j["addr"]),int(j["toId"]))
     res["items"]=core.list_items(d)
     return jsonify(res)
 
@@ -80,6 +98,14 @@ def edit_slime():
     if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
     res=core.edit_slime_type(d,int(j["from"]),int(j["to"]))
     res["slimes"]=core.list_slimes(d)
+    return jsonify(res)
+
+@app.route("/api/edit/entitytype", methods=["POST"])
+def edit_entitytype():
+    j=request.get_json(force=True); d=get_data(j.get("fileId"))
+    if d is None: return jsonify({"ok":False,"msg":"存档不存在或已过期"}),404
+    res=core.edit_entity_type(d,int(j["addr"]),int(j["toId"]))
+    res["entities"]=core.list_entities(d)
     return jsonify(res)
 
 @app.route("/api/edit/market", methods=["POST"])
