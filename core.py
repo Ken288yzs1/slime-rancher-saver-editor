@@ -1,4 +1,4 @@
-"""史莱姆牧场1 存档解析与修改核心 (实测通过版 + 改种类/单只转换)
+"""史莱姆牧场1 存档解析与修改核心 (实测通过版 + 改种类/单只无限制修改)
 真自适应: scan_srad对象扫描 + SRSED锚点字段定位 + find_market特征搜索"""
 import struct
 
@@ -194,8 +194,8 @@ def list_slimes(data):
             for k,v in sorted(stats.items(),key=lambda x:-x[1])]
 
 def list_entities(data):
-    """列出每一只复杂SRAD实体(史莱姆/largo/果实/箱子...), 带独立地址。
-    convertible=True 才能单只改种族。前端按 itemId 分组折叠。"""
+    """列出每一只复杂SRAD实体(史莱姆/largo/果实/鸡/箱子...), 带独立地址。
+    convertible 仅用于前端 ★ 标记(史莱姆互转安全), 不再限制可编辑性。"""
     ents=[]
     for body in scan_srad(data):
         if not is_complex(data,body): continue
@@ -225,7 +225,7 @@ def convertible_list():
             for i in sorted(CONVERTIBLE_IDS)]
 
 def all_items_list():
-    """所有已知物品ID(合并中英文表), 供"物品改种类"下拉框。无白名单限制。"""
+    """所有已知物品ID(合并中英文表), 供"改种类"下拉框。无白名单限制。"""
     ids=set(ID_EN.keys())|set(NAMES_CN.keys())
     return [{"itemId":i,"name":name_of(i)} for i in sorted(ids) if i!=0]
 
@@ -263,15 +263,16 @@ def edit_slime_type(data, from_id, to_id):
     return {"ok":True,"msg":f"转换{cnt}只 {name_of(from_id)}→{name_of(to_id)}","count":cnt}
 
 def edit_entity_type(data, addr, to_id):
-    """改单只史莱姆种族: 原地覆盖 itemId(addr)。结构安全, 限可转换白名单(防崩档)。"""
+    """改单只实体种类: 原地覆盖 itemId(addr)。无白名单限制——
+    普通生物等可改成任意已知物品(如钥匙)。仅做基础地址/范围校验。"""
     to_id=int(to_id)
     cur=struct.unpack_from('<i',data,addr)[0]
-    if cur not in CONVERTIBLE_IDS:
-        return {"ok":False,"msg":f"该实体不可转换(itemId={cur})"}
-    if to_id not in CONVERTIBLE_IDS:
-        return {"ok":False,"msg":"目标种类不在可转换白名单(防崩档)"}
+    if not is_item_id(cur):
+        return {"ok":False,"msg":f"地址校验失败(当前itemId={cur})"}
+    if not (0<to_id<20000):
+        return {"ok":False,"msg":f"目标ID超范围({to_id})"}
     struct.pack_into('<i',data,addr,to_id)
-    return {"ok":True,"msg":f"单只已转 {name_of(cur)}→{name_of(to_id)}","itemId":to_id}
+    return {"ok":True,"msg":f"单只已改 {name_of(cur)}→{name_of(to_id)}","itemId":to_id}
 
 def edit_market_clear(data):
     base,n=find_market(data)
