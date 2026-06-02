@@ -10,17 +10,19 @@
     max-width:1000px; margin:0 auto; padding:16px; background:#f5f5f7; color:#222; }
   h1 { font-size:22px; text-align:center; }
   h2 { font-size:17px; border-left:4px solid #4a90d9; padding-left:8px; margin-top:24px; }
+  h3 { font-size:14px; }
   .card { background:#fff; border-radius:10px; padding:16px; margin-bottom:16px;
     box-shadow:0 1px 4px rgba(0,0,0,.08); }
   .hidden { display:none; }
   button { background:#4a90d9; color:#fff; border:none; border-radius:6px;
-    padding:7px 14px; cursor:pointer; font-size:14px; }
+    padding:6px 12px; cursor:pointer; font-size:13px; }
   button:hover { background:#357abd; }
   button.gray { background:#888; }
   button.green { background:#2ecc71; }
   button.danger { background:#e74c3c; }
-  input, select { padding:6px 8px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
-  input[type=number] { width:110px; }
+  button.sm { padding:3px 8px; font-size:12px; }
+  input, select { padding:5px 7px; border:1px solid #ccc; border-radius:6px; font-size:13px; }
+  input[type=number] { width:100px; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { padding:6px 8px; border-bottom:1px solid #eee; text-align:left; }
   th { background:#fafafa; }
@@ -28,6 +30,12 @@
   .muted { color:#888; font-size:13px; }
   .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
   .stat-item { background:#f0f4f8; border-radius:6px; padding:6px 10px; font-size:13px; }
+  .acc-head { cursor:pointer; background:#eef2f7; border-radius:6px; padding:8px 10px;
+    margin-top:6px; display:flex; justify-content:space-between; align-items:center; font-size:14px; }
+  .acc-head:hover { background:#e2e9f1; }
+  .acc-body { padding:4px 10px; border-left:3px solid #cdd6e0; margin:2px 0 6px 8px; }
+  .ent-row { display:flex; gap:8px; align-items:center; justify-content:space-between;
+    padding:4px 0; border-bottom:1px solid #f2f2f2; flex-wrap:wrap; }
   #log { background:#1e1e1e; color:#b5e853; font-family:monospace; font-size:12px;
     height:160px; overflow-y:auto; padding:8px; border-radius:6px; white-space:pre-wrap; }
   .big-count { color:#e67e22; font-weight:bold; }
@@ -49,24 +57,30 @@
 
 <div id="main" class="hidden">
   <div class="card">
-    <h2>📦 仓库物品 <button class="gray" onclick="loadItems()" style="font-size:12px;padding:3px 8px;">🔄刷新</button></h2>
-    <div class="muted">同种物品多堆叠分行显示, 对照游戏内自行选择修改。橙色=异常大数值。</div>
+    <h2>📦 仓库物品 <button class="gray sm" onclick="loadItems()">🔄刷新</button></h2>
+    <div class="muted">可改数量，也可改种类（种类下拉为全量物品，无限制，请自行确认目标合理）。橙色=异常大数值。</div>
     <table id="itemTable">
-      <thead><tr><th>itemId</th><th>名称</th><th>当前数量</th><th>新数量</th><th>操作</th></tr></thead>
+      <thead><tr><th>itemId</th><th>名称</th><th>当前数量</th><th>新数量</th><th>改数量</th><th>改种类</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
   <div class="card">
-    <h2>🐾 史莱姆种类转换</h2>
-    <div class="muted">仅普通+特殊史莱姆可互转 (已排除焦油/鸡/果实/大史莱姆/Gordo)。⚠️=行为可能异常</div>
+    <h2>🐾 史莱姆批量转换</h2>
+    <div class="muted">把某种史莱姆全部转成另一种 (已排除焦油/鸡/果实/largo/Gordo)。⚠️=行为可能异常</div>
     <div class="row" style="margin:10px 0;">
       从 <select id="fromSel"></select>
       → <select id="toSel"></select>
-      <button class="danger" onclick="doConvert()">执行转换</button>
+      <button class="danger" onclick="doConvert()">执行批量转换</button>
     </div>
-    <h3 style="font-size:14px;">当前牧场实体统计 (含果实/箱子, ★=可转换)</h3>
+    <h3>当前牧场实体统计 (含果实/箱子, ★=可转换)</h3>
     <div class="stat-grid" id="slimeStats"></div>
+  </div>
+
+  <div class="card">
+    <h2>🔬 史莱姆单只管理 <button class="gray sm" onclick="loadEntities()">🔄刷新</button></h2>
+    <div class="muted">按种类折叠（默认收起），点击展开后可单独转换每一只。仅★可转换种类可改，其余只读。</div>
+    <div id="entityAcc" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
@@ -89,6 +103,11 @@
 
 <script>
 let FID=null;
+let CONV=[];            // 可转换史莱姆列表
+let CONV_OPTS="";       // 可转换 <option> html
+let ALLITEMS_OPTS="";   // 全量物品 <option> html
+let openGroups=new Set(); // 已展开的种类组
+
 function log(msg,type="info"){
   const t=new Date().toLocaleTimeString();
   const icon={info:"ℹ️",ok:"✅",warn:"⚠️",err:"❌"}[type]||"•";
@@ -104,11 +123,12 @@ async function doUpload(){
   log("上传中...");
   const j=await api("/api/upload",{method:"POST",body:fd});
   if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
-  FID=j.fileId; showOverview(j.overview);
+  FID=j.fileId; openGroups=new Set(); showOverview(j.overview);
   document.getElementById("main").classList.remove("hidden");
   document.getElementById("dlBtn").classList.remove("hidden");
   log(`上传成功, ID=${FID.slice(0,8)}`,"ok");
-  await loadConvertible(); await loadItems(); await loadSlimes(); await loadMarket();
+  await loadAllItems(); await loadConvertible();
+  await loadItems(); await loadSlimes(); await loadEntities(); await loadMarket();
 }
 function showOverview(o){
   document.getElementById("overview").innerHTML=
@@ -117,17 +137,41 @@ function showOverview(o){
     (o.marketOk?`<b>${o.marketAddr}</b> ${o.marketItems}项 ✅`:"<b style='color:red'>未定位❌</b>");
 }
 
+/* ---------- 全量物品 & 可转换列表 ---------- */
+async function loadAllItems(){
+  const j=await api("/api/allitems");
+  ALLITEMS_OPTS=j.list.map(s=>`<option value="${s.itemId}">${s.name} (${s.itemId})</option>`).join("");
+}
+async function loadConvertible(){
+  const j=await api("/api/convertible");
+  CONV=j.list;
+  CONV_OPTS=j.list.map(s=>`<option value="${s.itemId}">${(s.warn?"⚠️ ":"")}${s.name} (${s.itemId})</option>`).join("");
+  const fs=document.getElementById("fromSel"), ts=document.getElementById("toSel");
+  fs.innerHTML=""; ts.innerHTML="";
+  j.list.forEach(s=>{
+    const label=(s.warn?"⚠️ ":"")+`${s.name} (${s.itemId})`;
+    fs.add(new Option(label,s.itemId)); ts.add(new Option(label,s.itemId));
+  });
+}
+
+/* ---------- 仓库物品 ---------- */
 function renderItems(items){
   const tb=document.querySelector("#itemTable tbody"); tb.innerHTML="";
   items.forEach(it=>{
     const tr=document.createElement("tr");
     const big=it.count>=100000?"big-count":"";
-    tr.innerHTML=`<td>${it.itemId}</td><td>${it.name}</td>`+
+    tr.innerHTML=
+      `<td>${it.itemId}</td>`+
+      `<td>${it.name}</td>`+
       `<td class="${big}">${it.count}</td>`+
       `<td><input type="number" value="${it.count}" min="0" max="9999999"></td>`+
-      `<td><button>改</button></td>`;
+      `<td><button class="sm">改数量</button></td>`+
+      `<td><select class="typeSel">${ALLITEMS_OPTS}</select> <button class="sm gray">改种类</button></td>`;
     const inp=tr.querySelector("input");
-    tr.querySelector("button").onclick=()=>doEditItem(it.addr,inp.value);
+    const sel=tr.querySelector(".typeSel"); sel.value=it.itemId;
+    const btns=tr.querySelectorAll("button");
+    btns[0].onclick=()=>doEditItem(it.addr,inp.value);
+    btns[1].onclick=()=>doEditItemType(it.addr,sel.value);
     tb.appendChild(tr);
   });
 }
@@ -141,19 +185,18 @@ async function doEditItem(addr,count){
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({fileId:FID,addr:addr,count:Number(count)})});
   if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
-  log(`物品修改: addr=${addr} → ${j.value}`,"ok");
+  log(`物品数量: addr=${addr} → ${j.value}`,"ok");
   if(j.items) renderItems(j.items);
 }
-
-async function loadConvertible(){
-  const j=await api("/api/convertible");
-  const fs=document.getElementById("fromSel"), ts=document.getElementById("toSel");
-  fs.innerHTML=""; ts.innerHTML="";
-  j.list.forEach(s=>{
-    const label=(s.warn?"⚠️ ":"")+`${s.name} (${s.itemId})`;
-    fs.add(new Option(label,s.itemId)); ts.add(new Option(label,s.itemId));
-  });
+async function doEditItemType(addr,toId){
+  const j=await api("/api/edit/itemtype",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({fileId:FID,addr:addr,toId:Number(toId)})});
+  if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
+  log(j.msg,"ok"); if(j.items) renderItems(j.items);
 }
+
+/* ---------- 实体统计 + 批量转换 ---------- */
 function renderSlimes(slimes){
   const box=document.getElementById("slimeStats"); box.innerHTML="";
   slimes.forEach(s=>{
@@ -179,8 +222,58 @@ async function doConvert(){
     body:JSON.stringify({fileId:FID,from:from,to:to})});
   if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
   log(j.msg,"ok"); if(j.slimes) renderSlimes(j.slimes);
+  await loadEntities();
 }
 
+/* ---------- 单只管理 (折叠/展开) ---------- */
+function renderEntities(ents){
+  const box=document.getElementById("entityAcc"); box.innerHTML="";
+  const groups={};
+  ents.forEach(e=>{ (groups[e.itemId]=groups[e.itemId]||[]).push(e); });
+  Object.keys(groups).sort((a,b)=>a-b).forEach(id=>{
+    const list=groups[id];
+    const name=list[0].name, conv=list[0].convertible;
+    const open=openGroups.has(id);
+    const head=document.createElement("div"); head.className="acc-head";
+    head.innerHTML=`<span>${open?"▼":"▶"} <b>${name}</b> ×${list.length}`+
+      `${conv?" <span style='color:#e67e22'>★可转换</span>":" <span class='muted'>(只读)</span>"}</span>`;
+    head.onclick=()=>{ if(openGroups.has(id))openGroups.delete(id); else openGroups.add(id); renderEntities(ents); };
+    box.appendChild(head);
+    if(open){
+      const body=document.createElement("div"); body.className="acc-body";
+      list.forEach((e,i)=>{
+        const r=document.createElement("div"); r.className="ent-row";
+        const hex="0x"+e.addr.toString(16).toUpperCase();
+        if(e.convertible){
+          r.innerHTML=`<span>#${i+1} <span class="muted">@${hex}</span></span>`+
+            `<span><select class="entSel">${CONV_OPTS}</select> <button class="sm danger">转换</button></span>`;
+          const sel=r.querySelector("select"); sel.value=e.itemId;
+          r.querySelector("button").onclick=()=>doEntityConvert(e.addr,sel.value);
+        }else{
+          r.innerHTML=`<span>#${i+1} <span class="muted">@${hex}（只读）</span></span>`;
+        }
+        body.appendChild(r);
+      });
+      box.appendChild(body);
+    }
+  });
+}
+async function loadEntities(){
+  const j=await api(`/api/entities/${FID}`);
+  if(!j.ok){ log(j.msg,"err"); return; }
+  renderEntities(j.entities);
+}
+async function doEntityConvert(addr,toId){
+  const j=await api("/api/edit/entitytype",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({fileId:FID,addr:addr,toId:Number(toId)})});
+  if(!j.ok){ log(j.msg,"err"); alert(j.msg); return; }
+  log(`${j.msg} @0x${addr.toString(16).toUpperCase()}`,"ok");
+  if(j.entities) renderEntities(j.entities);
+  await loadSlimes();
+}
+
+/* ---------- 市场 ---------- */
 function renderMarket(market){
   const tb=document.querySelector("#marketTable tbody"); tb.innerHTML="";
   market.forEach(m=>{
